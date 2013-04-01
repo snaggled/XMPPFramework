@@ -333,7 +333,7 @@
 	  ],
 	},
 	{
-	  'target_name': 'xmppframework_all',
+	  'target_name': 'All',
 	  'type': 'none',
 	  'dependencies': [
 		'xmppframework_auth',
