@@ -15,12 +15,12 @@
 // 
 
 #import "XMPPSASLAuthentication.h"
-#import "XMPPDigestMD5Authentication.h"
-#import "XMPPPlainAuthentication.h"
-#import "XMPPXFacebookPlatformAuthentication.h"
-#import "XMPPAnonymousAuthentication.h"
-#import "XMPPDeprecatedPlainAuthentication.h"
-#import "XMPPDeprecatedDigestAuthentication.h"
+#import "Digest-MD5/XMPPDigestMD5Authentication.h"
+#import "Plain/XMPPPlainAuthentication.h"
+#import "X-Facebook-Platform/XMPPXFacebookPlatformAuthentication.h"
+#import "Anonymous/XMPPAnonymousAuthentication.h"
+#import "Deprecated-Plain/XMPPDeprecatedPlainAuthentication.h"
+#import "Deprecated-Digest/XMPPDeprecatedDigestAuthentication.h"
 
 // 
 // Categories
