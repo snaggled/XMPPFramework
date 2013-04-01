@@ -18,6 +18,7 @@
 	'OTHER_LDFLAGS': [
 		'-framework CoreData',
 		'-framework UIKit',
+		'-lxml2'
   	],
   }
 },
@@ -53,6 +54,7 @@
 	  'target_name': 'xmppframework_core',
 	  'type': 'static_library',
 	  'sources': [
+		  'XMPPFramework.h'
 		  'Core/XMPP.h',
 		  'Core/XMPPElement.h',
 		  'Core/XMPPElement.m',
@@ -337,9 +339,6 @@
 	{
 	  'target_name': 'xmppframework_all',
 	  'type': 'none',
-	  'sources': [
-		'XMPPFramework.h'
-	  ],
 	  'dependencies': [
 		'xmppframework_auth',
 		'xmppframework_cocoaasyncsocket',
