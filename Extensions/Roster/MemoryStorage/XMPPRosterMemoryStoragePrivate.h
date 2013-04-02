@@ -1,5 +1,6 @@
 #import "XMPPUserMemoryStorageObject.h"
 #import "XMPPResourceMemoryStorageObject.h"
+#import <UIKit/UIKit.h>
 
 /**
  * The following methods are designed to be invoked ONLY from

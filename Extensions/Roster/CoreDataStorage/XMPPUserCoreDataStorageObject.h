@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreData/CoreData.h>
+#import <UIKit/UIKit.h>
 
 #if !TARGET_OS_IPHONE
   #import <Cocoa/Cocoa.h>
