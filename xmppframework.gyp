@@ -15,6 +15,10 @@
 	"$(SDKROOT)/usr/include/libxml2",
   ],
   'xcode_settings': {
+	'OTHER_LDFLAGS': [
+		'-framework CoreData',
+		'-framework UIKit',
+	],
 	'CLANG_ENABLE_OBJC_ARC': 'YES',
   },
 },
@@ -344,13 +348,6 @@
 		'xmppframework_extensions',
 		'xmppframework_utilities',
 	  ],
-	  'xcode_settings': {
-		'OTHER_LDFLAGS': [
-			'-framework CoreData',
-			'-framework UIKit',
-			'-lxml2',
-		],
-	  },
 	},
   ],
 }
