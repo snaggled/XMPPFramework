@@ -9,32 +9,6 @@
 #warning This file must be compiled with ARC. Use -fobjc-arc flag (or convert project to ARC).
 #endif
 
-/**
- * Does ARC support support GCD objects?
- * It does if the minimum deployment target is iOS 6+ or Mac OS X 10.8+
-**/
-#if TARGET_OS_IPHONE
-
-  // Compiling for iOS
-
-  #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 60000 // iOS 6.0 or later
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 0
-  #else                                         // iOS 5.X or earlier
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 1
-  #endif
-
-#else
-
-  // Compiling for Mac OS X
-
-  #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1080     // Mac OS X 10.8 or later
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 0
-  #else
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 1     // Mac OS X 10.7 or earlier
-  #endif
-
-#endif
-
 // Log levels: off, error, warn, info, verbose
 #if DEBUG
   static const int xmppLogLevel = XMPP_LOG_LEVEL_WARN; // | XMPP_LOG_FLAG_TRACE;
@@ -284,6 +258,9 @@ static NSMutableArray *proxyCandidates;
 	
 	turnQueue = dispatch_queue_create("TURNSocket", NULL);
 	
+	turnQueueTag = &turnQueueTag;
+	dispatch_queue_set_specific(turnQueue, turnQueueTag, turnQueueTag, NULL);
+
 	// We want to add this new turn socket to the list of existing sockets.
 	// This gives us a central repository of turn socket objects that we can easily query.
 	
@@ -314,7 +291,7 @@ static NSMutableArray *proxyCandidates;
 	if (discoTimer)
 		dispatch_source_cancel(discoTimer);
 	
-	#if NEEDS_DISPATCH_RETAIN_RELEASE
+	#if !OS_OBJECT_USE_OBJC
 	if (turnQueue)
 		dispatch_release(turnQueue);
 	
@@ -362,7 +339,7 @@ static NSMutableArray *proxyCandidates;
 		delegate = aDelegate;
 		delegateQueue = aDelegateQueue;
 		
-		#if NEEDS_DISPATCH_RETAIN_RELEASE
+		#if !OS_OBJECT_USE_OBJC
 		dispatch_retain(delegateQueue);
 		#endif
 		
@@ -430,7 +407,7 @@ static NSMutableArray *proxyCandidates;
 		}
 	}};
 	
-	if (dispatch_get_current_queue() == turnQueue)
+	if (dispatch_get_specific(turnQueueTag))
 		block();
 	else
 		dispatch_async(turnQueue, block);
@@ -1143,8 +1120,8 @@ static NSMutableArray *proxyCandidates;
 	XMPPJID *targetJID    = isClient ? jid   : myJID;
 	
 	NSString *hashMe = [NSString stringWithFormat:@"%@%@%@", uuid, [initiatorJID full], [targetJID full]];
-	NSData *hashRaw = [[hashMe dataUsingEncoding:NSUTF8StringEncoding] sha1Digest];
-	NSData *hash = [[hashRaw hexStringValue] dataUsingEncoding:NSUTF8StringEncoding];
+	NSData *hashRaw = [[hashMe dataUsingEncoding:NSUTF8StringEncoding] xmpp_sha1Digest];
+	NSData *hash = [[hashRaw xmpp_hexStringValue] dataUsingEncoding:NSUTF8StringEncoding];
 	
 	XMPPLogVerbose(@"TURNSocket: hashMe : %@", hashMe);
 	XMPPLogVerbose(@"TURNSocket: hashRaw: %@", hashRaw);
@@ -1235,8 +1212,8 @@ static NSMutableArray *proxyCandidates;
 	{
 		// See socksOpen method for socks reply format
 		
-		UInt8 ver = [NSNumber extractUInt8FromData:data atOffset:0];
-		UInt8 mtd = [NSNumber extractUInt8FromData:data atOffset:1];
+		UInt8 ver = [NSNumber xmpp_extractUInt8FromData:data atOffset:0];
+		UInt8 mtd = [NSNumber xmpp_extractUInt8FromData:data atOffset:1];
 		
 		XMPPLogVerbose(@"TURNSocket: SOCKS_OPEN: ver(%o) mtd(%o)", ver, mtd);
 		
@@ -1257,8 +1234,8 @@ static NSMutableArray *proxyCandidates;
 		
 		XMPPLogVerbose(@"TURNSocket: SOCKS_CONNECT_REPLY_1: %@", data);
 		
-		UInt8 ver = [NSNumber extractUInt8FromData:data atOffset:0];
-		UInt8 rep = [NSNumber extractUInt8FromData:data atOffset:1];
+		UInt8 ver = [NSNumber xmpp_extractUInt8FromData:data atOffset:0];
+		UInt8 rep = [NSNumber xmpp_extractUInt8FromData:data atOffset:1];
 		
 		XMPPLogVerbose(@"TURNSocket: SOCKS_CONNECT_REPLY_1: ver(%o) rep(%o)", ver, rep);
 		
@@ -1273,11 +1250,11 @@ static NSMutableArray *proxyCandidates;
 			// 
 			// However, some servers don't follow the protocol, and send a atyp value of 0.
 			
-			UInt8 atyp = [NSNumber extractUInt8FromData:data atOffset:3];
+			UInt8 atyp = [NSNumber xmpp_extractUInt8FromData:data atOffset:3];
 			
 			if (atyp == 3)
 			{
-				UInt8 addrLength = [NSNumber extractUInt8FromData:data atOffset:4];
+				UInt8 addrLength = [NSNumber xmpp_extractUInt8FromData:data atOffset:4];
 				UInt8 portLength = 2;
 				
 				XMPPLogVerbose(@"TURNSocket: addrLength: %o", addrLength);
@@ -1343,7 +1320,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)setupDiscoTimer:(NSTimeInterval)timeout
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	if (discoTimer == NULL)
 	{
@@ -1406,7 +1383,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)doDiscoItemsTimeout:(NSString *)theUUID
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	if (state == STATE_PROXY_DISCO_ITEMS)
 	{
@@ -1422,7 +1399,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)doDiscoInfoTimeout:(NSString *)theUUID
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	if (state == STATE_PROXY_DISCO_INFO)
 	{
@@ -1438,7 +1415,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)doDiscoAddressTimeout:(NSString *)theUUID
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	if (state == STATE_PROXY_DISCO_ADDR)
 	{
@@ -1455,7 +1432,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)doTotalTimeout
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	if ((state != STATE_DONE) && (state != STATE_FAILURE))
 	{
@@ -1475,7 +1452,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)succeed
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	XMPPLogTrace();
 	
@@ -1498,7 +1475,7 @@ static NSMutableArray *proxyCandidates;
 
 - (void)fail
 {
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue");
 	
 	XMPPLogTrace();
 	
@@ -1523,14 +1500,14 @@ static NSMutableArray *proxyCandidates;
 - (void)cleanup
 {
 	// This method must be run on the turnQueue
-	NSAssert(dispatch_get_current_queue() == turnQueue, @"Invoked on incorrect queue.");
+	NSAssert(dispatch_get_specific(turnQueueTag), @"Invoked on incorrect queue.");
 	
 	XMPPLogTrace();
 	
 	if (turnTimer)
 	{
 		dispatch_source_cancel(turnTimer);
-		#if NEEDS_DISPATCH_RETAIN_RELEASE
+		#if !OS_OBJECT_USE_OBJC
 		dispatch_release(turnTimer);
 		#endif
 		turnTimer = NULL;
@@ -1539,7 +1516,7 @@ static NSMutableArray *proxyCandidates;
 	if (discoTimer)
 	{
 		dispatch_source_cancel(discoTimer);
-		#if NEEDS_DISPATCH_RETAIN_RELEASE
+		#if !OS_OBJECT_USE_OBJC
 		dispatch_release(discoTimer);
 		#endif
 		discoTimer = NULL;

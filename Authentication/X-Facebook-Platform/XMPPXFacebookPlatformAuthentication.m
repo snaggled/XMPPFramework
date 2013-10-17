@@ -162,7 +162,7 @@ static char facebookAppIdKey;
 	// Once "decoded", it's just a string of key=value pairs separated by ampersands.
 	
 	NSData *base64Data = [[challenge stringValue] dataUsingEncoding:NSASCIIStringEncoding];
-	NSData *decodedData = [base64Data base64Decoded];
+	NSData *decodedData = [base64Data xmpp_base64Decoded];
 	
 	NSString *authStr = [[NSString alloc] initWithData:decodedData encoding:NSUTF8StringEncoding];
 	
@@ -216,7 +216,7 @@ static char facebookAppIdKey;
 	
 	NSData *utf8data = [buffer dataUsingEncoding:NSUTF8StringEncoding];
 	
-	return [utf8data base64Encoded];
+	return [utf8data xmpp_base64Encoded];
 }
 
 @end
@@ -252,8 +252,8 @@ static char facebookAppIdKey;
 	dispatch_block_t block = ^{
 		result = objc_getAssociatedObject(self, &facebookAppIdKey);
 	};
-	
-	if (dispatch_get_current_queue() == self.xmppQueue)
+
+	if (dispatch_get_specific(self.xmppQueueTag))
 		block();
 	else
 		dispatch_sync(self.xmppQueue, block);
@@ -269,7 +269,7 @@ static char facebookAppIdKey;
 		objc_setAssociatedObject(self, &facebookAppIdKey, newFacebookAppId, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 	};
 	
-	if (dispatch_get_current_queue() == self.xmppQueue)
+	if (dispatch_get_specific(self.xmppQueueTag))
 		block();
 	else
 		dispatch_async(self.xmppQueue, block);
@@ -313,8 +313,7 @@ static char facebookAppIdKey;
 		}
 	}};
 	
-	
-	if (dispatch_get_current_queue() == self.xmppQueue)
+	if (dispatch_get_specific(self.xmppQueueTag))
 		block();
 	else
 		dispatch_sync(self.xmppQueue, block);

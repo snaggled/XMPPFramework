@@ -12,32 +12,6 @@
 #warning This file must be compiled with ARC. Use -fobjc-arc flag (or convert project to ARC).
 #endif
 
-/**
- * Does ARC support support GCD objects?
- * It does if the minimum deployment target is iOS 6+ or Mac OS X 10.8+
-**/
-#if TARGET_OS_IPHONE
-
-  // Compiling for iOS
-
-  #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 60000 // iOS 6.0 or later
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 0
-  #else                                         // iOS 5.X or earlier
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 1
-  #endif
-
-#else
-
-  // Compiling for Mac OS X
-
-  #if MAC_OS_X_VERSION_MIN_REQUIRED >= 1080     // Mac OS X 10.8 or later
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 0
-  #else
-    #define NEEDS_DISPATCH_RETAIN_RELEASE 1     // Mac OS X 10.7 or earlier
-  #endif
-
-#endif
-
 // Log levels: off, error, warn, info, verbose
 #if DEBUG
   static const int xmppLogLevel = XMPP_LOG_LEVEL_WARN;
@@ -112,18 +86,41 @@ static NSMutableSet *databaseFileNames;
 	}
 }
 
+- (NSBundle *)managedObjectModelBundle
+{
+    return [NSBundle bundleForClass:[self class]];
+}
+
 - (NSString *)defaultDatabaseFileName
 {
 	// Override me, if needed, to provide customized behavior.
 	// 
-	// This method is queried if the initWithDatabaseFileName method is invoked with a nil parameter.
+	// This method is queried if the initWithDatabaseFileName:storeOptions: method is invoked with a nil parameter for databaseFileName.
 	// 
 	// You are encouraged to use the sqlite file extension.
 	
 	return [NSString stringWithFormat:@"%@.sqlite", [self managedObjectModelName]];
 }
 
-- (void)willCreatePersistentStoreWithPath:(NSString *)storePath
+- (NSDictionary *)defaultStoreOptions
+{
+    
+    // Override me, if needed, to provide customized behavior.
+	//
+	// This method is queried if the initWithDatabaseFileName:storeOptions: method is invoked with a nil parameter for defaultStoreOptions.
+    
+    NSDictionary *defaultStoreOptions = nil;
+    
+    if(databaseFileName)
+    {
+        defaultStoreOptions = @{ NSMigratePersistentStoresAutomaticallyOption: @(YES),
+                                 NSInferMappingModelAutomaticallyOption : @(YES) };
+    }
+    
+    return defaultStoreOptions;
+}
+
+- (void)willCreatePersistentStoreWithPath:(NSString *)storePath options:(NSDictionary *)theStoreOptions
 {
 	// Override me, if needed, to provide customized behavior.
 	// 
@@ -134,7 +131,7 @@ static NSMutableSet *databaseFileNames;
 	// If this instance was created via initWithInMemoryStore, then the storePath parameter will be nil.
 }
 
-- (BOOL)addPersistentStoreWithPath:(NSString *)storePath error:(NSError **)errorPtr
+- (BOOL)addPersistentStoreWithPath:(NSString *)storePath options:(NSDictionary *)theStoreOptions error:(NSError **)errorPtr
 {
 	// Override me, if needed, to completely customize the persistent store.
 	// 
@@ -152,16 +149,10 @@ static NSMutableSet *databaseFileNames;
 		
 		NSURL *storeUrl = [NSURL fileURLWithPath:storePath];
 		
-		// Default support for automatic lightweight migrations
-		NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
-		                         [NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption,
-		                         [NSNumber numberWithBool:YES], NSInferMappingModelAutomaticallyOption, 
-		                         nil];
-		
 		persistentStore = [persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType
 		                                                           configuration:nil
 		                                                                     URL:storeUrl
-		                                                                 options:options
+		                                                                 options:storeOptions
 		                                                                   error:errorPtr];
 	}
 	else
@@ -178,7 +169,7 @@ static NSMutableSet *databaseFileNames;
     return persistentStore != nil;
 }
 
-- (void)didNotAddPersistentStoreWithPath:(NSString *)storePath error:(NSError *)error
+- (void)didNotAddPersistentStoreWithPath:(NSString *)storePath options:(NSDictionary *)theStoreOptions error:(NSError *)error
 {
     // Override me, if needed, to provide customized behavior.
 	// 
@@ -246,11 +237,16 @@ static NSMutableSet *databaseFileNames;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 @synthesize databaseFileName;
+@synthesize storeOptions;
 
 - (void)commonInit
 {
 	saveThreshold = 500;
+	
 	storageQueue = dispatch_queue_create(class_getName([self class]), NULL);
+	
+	storageQueueTag = &storageQueueTag;
+	dispatch_queue_set_specific(storageQueue, storageQueueTag, storageQueueTag, NULL);
 	
 	myJidCache = [[NSMutableDictionary alloc] init];
 	
@@ -262,10 +258,10 @@ static NSMutableSet *databaseFileNames;
 
 - (id)init
 {
-    return [self initWithDatabaseFilename:nil];
+    return [self initWithDatabaseFilename:nil storeOptions:nil];
 }
 
-- (id)initWithDatabaseFilename:(NSString *)aDatabaseFileName
+- (id)initWithDatabaseFilename:(NSString *)aDatabaseFileName storeOptions:(NSDictionary *)theStoreOptions
 {
 	if ((self = [super init]))
 	{
@@ -273,6 +269,11 @@ static NSMutableSet *databaseFileNames;
 			databaseFileName = [aDatabaseFileName copy];
 		else
 			databaseFileName = [[self defaultDatabaseFileName] copy];
+        
+        if(theStoreOptions)
+            storeOptions = theStoreOptions;
+        else
+            storeOptions = [self defaultStoreOptions];
 		
 		if (![[self class] registerDatabaseFileName:databaseFileName])
 		{
@@ -319,7 +320,7 @@ static NSMutableSet *databaseFileNames;
 
 - (NSUInteger)saveThreshold
 {
-	if (dispatch_get_current_queue() == storageQueue)
+	if (dispatch_get_specific(storageQueueTag))
 	{
 		return saveThreshold;
 	}
@@ -341,7 +342,7 @@ static NSMutableSet *databaseFileNames;
 		saveThreshold = newSaveThreshold;
 	};
 	
-	if (dispatch_get_current_queue() == storageQueue)
+	if (dispatch_get_specific(storageQueueTag))
 		block();
 	else
 		dispatch_async(storageQueue, block);
@@ -369,7 +370,7 @@ static NSMutableSet *databaseFileNames;
 	
 	dispatch_block_t block = ^{ @autoreleasepool {
 		
-		NSNumber *key = [NSNumber numberWithPtr:(__bridge void *)stream];
+		NSNumber *key = [NSNumber xmpp_numberWithPtr:(__bridge void *)stream];
 		
 		result = (XMPPJID *)[myJidCache objectForKey:key];
 		if (!result)
@@ -382,7 +383,7 @@ static NSMutableSet *databaseFileNames;
 		}
 	}};
 	
-	if (dispatch_get_current_queue() == storageQueue)
+	if (dispatch_get_specific(storageQueueTag))
 		block();
 	else
 		dispatch_sync(storageQueue, block);
@@ -406,7 +407,7 @@ static NSMutableSet *databaseFileNames;
 	
 	dispatch_block_t block = ^{ @autoreleasepool {
 		
-		NSNumber *key = [NSNumber numberWithPtr:(__bridge void *)stream];
+		NSNumber *key = [NSNumber xmpp_numberWithPtr:(__bridge void *)stream];
 		XMPPJID *cachedJID = [myJidCache objectForKey:key];
 		
 		if (cachedJID)
@@ -429,7 +430,7 @@ static NSMutableSet *databaseFileNames;
 		}
 	}};
 	
-	if (dispatch_get_current_queue() == storageQueue)
+	if (dispatch_get_specific(storageQueueTag))
 		block();
 	else
 		dispatch_async(storageQueue, block);
@@ -481,16 +482,16 @@ static NSMutableSet *databaseFileNames;
 			result = managedObjectModel;
 			return;
 		}
-		
+		        
 		NSString *momName = [self managedObjectModelName];
 		
 		XMPPLogVerbose(@"%@: Creating managedObjectModel (%@)", [self class], momName);
 		
-		NSString *momPath = [[NSBundle mainBundle] pathForResource:momName ofType:@"mom"];
+		NSString *momPath = [[self managedObjectModelBundle] pathForResource:momName ofType:@"mom"];
 		if (momPath == nil)
 		{
 			// The model may be versioned or created with Xcode 4, try momd as an extension.
-			momPath = [[NSBundle mainBundle] pathForResource:momName ofType:@"momd"];
+			momPath = [[self managedObjectModelBundle] pathForResource:momName ofType:@"momd"];
 		}
     
 		if (momPath)
@@ -499,17 +500,41 @@ static NSMutableSet *databaseFileNames;
 			
 			NSURL *momUrl = [NSURL fileURLWithPath:momPath];
 			
-			managedObjectModel = [[NSManagedObjectModel alloc] initWithContentsOfURL:momUrl];
+			managedObjectModel = [[[NSManagedObjectModel alloc] initWithContentsOfURL:momUrl] copy];
 		}
 		else
 		{
 			XMPPLogWarn(@"%@: Couldn't find managedObjectModel file - %@", [self class], momName);
 		}
+        
+        if([NSAttributeDescription instancesRespondToSelector:@selector(setAllowsExternalBinaryDataStorage:)])
+        {
+            if(autoAllowExternalBinaryDataStorage)
+            {
+                NSArray *entities = [managedObjectModel entities];
+                
+                for(NSEntityDescription *entity in entities)
+                {
+                    NSDictionary *attributesByName = [entity attributesByName];
+                    
+                    [attributesByName enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+                        
+                        if([obj attributeType] == NSBinaryDataAttributeType)
+                        {
+                            [obj setAllowsExternalBinaryDataStorage:YES];
+                        }
+                        
+                    }];			
+                }
+                
+            }
+            
+        }
 		
 		result = managedObjectModel;
 	}};
 	
-	if (dispatch_get_current_queue() == storageQueue)
+	if (dispatch_get_specific(storageQueueTag))
 		block();
 	else
 		dispatch_sync(storageQueue, block);
@@ -552,12 +577,22 @@ static NSMutableSet *databaseFileNames;
 			{
 				// If storePath is nil, then NSURL will throw an exception
 				
-				[self willCreatePersistentStoreWithPath:storePath];
+				[self willCreatePersistentStoreWithPath:storePath options:storeOptions];
 				
 				NSError *error = nil;
-				if (![self addPersistentStoreWithPath:storePath error:&error])
+				
+				BOOL didAddPersistentStore = [self addPersistentStoreWithPath:storePath options:storeOptions error:&error];
+				
+				if(autoRecreateDatabaseFile && !didAddPersistentStore)
 				{
-					[self didNotAddPersistentStoreWithPath:storePath error:error];
+					[[NSFileManager defaultManager] removeItemAtPath:storePath error:NULL];
+					
+					didAddPersistentStore = [self addPersistentStoreWithPath:storePath options:storeOptions error:&error];
+				}
+				
+				if (!didAddPersistentStore)
+				{
+					[self didNotAddPersistentStoreWithPath:storePath options:storeOptions error:error];
 				}
 			}
 			else
@@ -570,12 +605,12 @@ static NSMutableSet *databaseFileNames;
 		{
 			// In-Memory persistent store
 			
-			[self willCreatePersistentStoreWithPath:nil];
+			[self willCreatePersistentStoreWithPath:nil options:storeOptions];
 			
 			NSError *error = nil;
-			if (![self addPersistentStoreWithPath:nil error:&error])
+			if (![self addPersistentStoreWithPath:nil options:storeOptions error:&error])
 			{
-				[self didNotAddPersistentStoreWithPath:nil error:error];
+				[self didNotAddPersistentStoreWithPath:nil options:storeOptions error:error];
 			}
 		}
 		
@@ -583,7 +618,7 @@ static NSMutableSet *databaseFileNames;
 		
 	}};
 	
-	if (dispatch_get_current_queue() == storageQueue)
+	if (dispatch_get_specific(storageQueueTag))
 		block();
 	else
 		dispatch_sync(storageQueue, block);
@@ -609,7 +644,7 @@ static NSMutableSet *databaseFileNames;
 	// then you need to go read the documentation for core data,
 	// specifically the section entitled "Concurrency with Core Data".
 	// 
-	NSAssert(dispatch_get_current_queue() == storageQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(storageQueueTag), @"Invoked on incorrect queue");
 	// 
 	// Do NOT remove the assert statment above!
 	// Read the comments above!
@@ -654,7 +689,7 @@ static NSMutableSet *databaseFileNames;
 	// then you need to go read the documentation for core data,
 	// specifically the section entitled "Concurrency with Core Data".
 	// 
-	NSAssert(dispatch_get_current_queue() == dispatch_get_main_queue(), @"Context reserved for main thread only");
+	NSAssert([NSThread isMainThread], @"Context reserved for main thread only");
 	// 
 	// Do NOT remove the assert statment above!
 	// Read the comments above!
@@ -708,6 +743,62 @@ static NSMutableSet *databaseFileNames;
     }
 }
 
+- (BOOL)autoRecreateDatabaseFile
+{
+	__block BOOL result = NO;
+	
+	dispatch_block_t block = ^{ @autoreleasepool {
+		result = autoRecreateDatabaseFile;
+	}};
+	
+	if (dispatch_get_specific(storageQueueTag))
+		block();
+	else
+		dispatch_sync(storageQueue, block);
+	
+	return result;
+}
+
+- (void)setAutoRecreateDatabaseFile:(BOOL)flag
+{
+	dispatch_block_t block = ^{
+		autoRecreateDatabaseFile = flag;
+	};
+	
+	if (dispatch_get_specific(storageQueueTag))
+		block();
+	else
+		dispatch_sync(storageQueue, block);
+}
+
+- (BOOL)autoAllowExternalBinaryDataStorage
+{
+	__block BOOL result = NO;
+	
+	dispatch_block_t block = ^{ @autoreleasepool {
+		result = autoAllowExternalBinaryDataStorage;
+	}};
+	
+	if (dispatch_get_specific(storageQueueTag))
+		block();
+	else
+		dispatch_sync(storageQueue, block);
+	
+	return result;
+}
+
+- (void)setAutoAllowExternalBinaryDataStorage:(BOOL)flag
+{
+	dispatch_block_t block = ^{
+		autoAllowExternalBinaryDataStorage = flag;
+	};
+	
+	if (dispatch_get_specific(storageQueueTag))
+		block();
+	else
+		dispatch_sync(storageQueue, block);	
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma mark Utilities
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -749,7 +840,7 @@ static NSMutableSet *databaseFileNames;
 
 - (void)maybeSave:(int32_t)currentPendingRequests
 {
-	NSAssert(dispatch_get_current_queue() == storageQueue, @"Invoked on incorrect queue");
+	NSAssert(dispatch_get_specific(storageQueueTag), @"Invoked on incorrect queue");
 	
 	
 	if ([[self managedObjectContext] hasChanges])
@@ -787,7 +878,7 @@ static NSMutableSet *databaseFileNames;
 	// If you remove the assert statement below, you are destroying the sole purpose for this class,
 	// which is to optimize the disk IO by buffering save operations.
 	// 
-	NSAssert(dispatch_get_current_queue() != storageQueue, @"Invoked on incorrect queue");
+	NSAssert(!dispatch_get_specific(storageQueueTag), @"Invoked on incorrect queue");
 	// 
 	// For a full discussion of this method, please see XMPPCoreDataStorageProtocol.h
 	//
@@ -817,7 +908,7 @@ static NSMutableSet *databaseFileNames;
 	// If you remove the assert statement below, you are destroying the sole purpose for this class,
 	// which is to optimize the disk IO by buffering save operations.
 	// 
-	NSAssert(dispatch_get_current_queue() != storageQueue, @"Invoked on incorrect queue");
+	NSAssert(!dispatch_get_specific(storageQueueTag), @"Invoked on incorrect queue");
 	// 
 	// For a full discussion of this method, please see XMPPCoreDataStorageProtocol.h
 	// 
@@ -845,7 +936,7 @@ static NSMutableSet *databaseFileNames;
 		[[self class] unregisterDatabaseFileName:databaseFileName];
 	}
 	
-	#if NEEDS_DISPATCH_RETAIN_RELEASE
+	#if !OS_OBJECT_USE_OBJC
 	if (storageQueue)
 		dispatch_release(storageQueue);
 	#endif

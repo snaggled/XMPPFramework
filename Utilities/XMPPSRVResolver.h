@@ -17,6 +17,7 @@ extern NSString *const XMPPSRVResolverErrorDomain;
 	dispatch_queue_t delegateQueue;
 	
 	dispatch_queue_t resolverQueue;
+	void *resolverQueueTag;
 	
 	__strong NSString *srvName;
 	NSTimeInterval timeout;
@@ -53,8 +54,8 @@ extern NSString *const XMPPSRVResolverErrorDomain;
 
 @protocol XMPPSRVResolverDelegate
 
-- (void)srvResolver:(XMPPSRVResolver *)sender didResolveRecords:(NSArray *)records;
-- (void)srvResolver:(XMPPSRVResolver *)sender didNotResolveDueToError:(NSError *)error;
+- (void)xmppSRVResolver:(XMPPSRVResolver *)sender didResolveRecords:(NSArray *)records;
+- (void)xmppSRVResolver:(XMPPSRVResolver *)sender didNotResolveDueToError:(NSError *)error;
 
 @end
 
