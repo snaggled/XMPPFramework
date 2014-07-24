@@ -1944,12 +1944,12 @@ enum XMPPStreamConfig
 		
 		id <XMPPSASLAuthentication> someAuth = nil;
         
-		if ([self supportsSCRAMSHA1Authentication])
-		{
-			someAuth = [[XMPPSCRAMSHA1Authentication alloc] initWithStream:self password:password];
-			result = [self authenticate:someAuth error:&err];
-		}
-		else if ([self supportsDigestMD5Authentication])
+		//if ([self supportsSCRAMSHA1Authentication])
+		//{
+	//		someAuth = [[XMPPSCRAMSHA1Authentication alloc] initWithStream:self password:password];
+//			result = [self authenticate:someAuth error:&err];
+//		}
+		if ([self supportsDigestMD5Authentication])
 		{
 			someAuth = [[XMPPDigestMD5Authentication alloc] initWithStream:self password:password];
 			result = [self authenticate:someAuth error:&err];
